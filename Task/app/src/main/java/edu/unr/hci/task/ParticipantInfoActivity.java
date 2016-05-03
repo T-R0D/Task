@@ -1,17 +1,23 @@
 package edu.unr.hci.task;
 
 import android.content.Intent;
+import android.provider.ContactsContract;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.NumberPicker;
 import android.widget.RadioGroup;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 
 public class ParticipantInfoActivity extends AppCompatActivity {
 
+    public static final String TAG = ParticipantInfoActivity.class.toString();
 
     public static final String INTERFACE_A = "INTERFACE_A";
     public static final String INTERFACE_1 = "INTERFACE_1";
@@ -63,13 +69,17 @@ public class ParticipantInfoActivity extends AppCompatActivity {
             beginButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    beginExperiment();
+                    try {
+                        beginExperiment();
+                    } catch (JSONException e) {
+                        Log.e(TAG, e.getMessage(), e);
+                    }
                 }
             });
         }
     }
 
-    public void beginExperiment() {
+    public void beginExperiment() throws JSONException {
         int pickedInterfaceId;
         pickedInterfaceId = this.mInterfaceVersionGroup.getCheckedRadioButtonId();
 
@@ -79,9 +89,19 @@ public class ParticipantInfoActivity extends AppCompatActivity {
             mInterfaceVersion = INTERFACE_1;
         }
 
+        JSONObject experimentData = new JSONObject();
+        try {
+            experimentData.put(DataKeys.PARTICIPANT_ID, this.mParticipantIdPicker.getValue());
+            experimentData.put(DataKeys.INTERFACE_VERSION, mInterfaceVersion);
+        } catch (JSONException e) {
+            Log.e(TAG, e.getMessage(), e);
+        }
+
         Intent intent = new Intent(this, TransitionActivity.class);
         intent.putExtra(IntentKeys.TASK_ROUND_EXTRA, 0);
-        intent.putExtra(TransitionActivity.TRANSITION_MESSAGE_EXTRA, "Here's a training exercise! The following task(s) will help familiarize you with this timekeeping app (although, it's pretty simple...)");
+        intent.putExtra(TransitionActivity.TRANSITION_MESSAGE_EXTRA, "Here's a training exercise! " +
+                "The following task(s) will help familiarize you with this timekeeping app.");
+        intent.putExtra(IntentKeys.EXPERIMENT_DATA_EXTRA, experimentData.toString());
         intent.putExtra(IntentKeys.PARTICIPANT_ID_EXTRA, this.mParticipantIdPicker.getValue());
         intent.putExtra(IntentKeys.INTERFACE_VERSION_EXTRA, mInterfaceVersion);
         this.finish();

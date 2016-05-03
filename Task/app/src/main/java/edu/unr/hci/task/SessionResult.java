@@ -13,8 +13,8 @@ public class SessionResult {
     public static final String PERSEVARANCE = "perseverance";
 
     public String participant;
-    private List<Long> taskCompletionTimes;
-    private List<String> taskPerserveraceResults;
+    public List<Long> taskCompletionTimes;
+    public List<String> taskPerserveraceResults;
 
     public SessionResult(String participant) {
         this.participant = participant;

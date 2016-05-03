@@ -10,6 +10,11 @@ public class ThankYouActivity extends AppCompatActivity {
     Button mExitButton;
 
     @Override
+    public void onBackPressed() {
+        // do nothing - disable the back button
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_thank_you);

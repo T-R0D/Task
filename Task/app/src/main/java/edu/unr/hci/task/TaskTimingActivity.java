@@ -22,6 +22,7 @@ package edu.unr.hci.task;
 import android.content.Intent;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.provider.ContactsContract;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentPagerAdapter;
@@ -33,9 +34,18 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
+import java.io.Reader;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
@@ -43,17 +53,14 @@ import java.util.Locale;
 public class TaskTimingActivity extends AppCompatActivity {
     public static final String TAG = TaskTimingActivity.class.toString();
 
-
-    public static final String FILE_IO_TAG = "FILE_IO";
-
-    public static final String PARTICIPANT_EXTRA = "PARTICIPANT_EXTRA";
-
-    public static final long GIVE_UP_TIME = 1000 * 60 * 3; // milliseconds
+    public static final long GIVE_UP_TIME = 1000 * 60 * 3; // 3 minutes in milliseconds
 
     public static final String DATA_DIR = "HCI-Task-Results";
+    public static final String DATA_FILE = "experiment_data.txt";
 
     public static final float DISABLED_ALPHA = 0.4f;
 
+    public static final int TOTAL_ROUNDS = 3;
     public static final int N_TRAINING_TASKS = 3;
     public static final int N_FIRST_ROUND_TASKS = 3;
     public static final int N_SECOND_ROUND_TASKS = 2;
@@ -69,10 +76,15 @@ public class TaskTimingActivity extends AppCompatActivity {
     String mInterfaceVersion;
     Integer mNTasks;
     ArrayList<String> mTaskDescriptionTexts;
-    ArrayList<String> mTaskImages;
+    ArrayList<Integer> mTaskImages;
     private int mCurrentTask;
     private long mTaskStartTime;
     private SessionResult mSessionResult;
+
+    @Override
+    public void onBackPressed() {
+        // do nothing - disable the back button
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,15 +99,22 @@ public class TaskTimingActivity extends AppCompatActivity {
         this.setupFinishedButton();
         this.setupGiveUpButton();
 
-        String participantId = this.mActivatingIntent.getStringExtra(PARTICIPANT_EXTRA);
+        String participantId = this.mActivatingIntent.getStringExtra(IntentKeys.PARTICIPANT_ID_EXTRA);
         this.mInterfaceVersion = this.mActivatingIntent.getStringExtra(IntentKeys.INTERFACE_VERSION_EXTRA);
         this.mTaskRound = this.mActivatingIntent.getIntExtra(IntentKeys.TASK_ROUND_EXTRA, 0);
         this.mCurrentTask = 0;
-        this.setupTaskParameters(this.mTaskRound, this.mInterfaceVersion);
+        this.setupTaskParameters(this.mTaskRound);
 
         this.setupNewTask(this.mCurrentTask);
         this.mSessionResult = new SessionResult(participantId);
         this.setupNewTask(this.mCurrentTask);
+
+
+        try {
+            Log.i(TAG, new JSONObject(this.getIntent().getStringExtra(IntentKeys.EXPERIMENT_DATA_EXTRA)).toString(4));
+        } catch (JSONException e) {
+
+        }
     }
 
     public void setupTaskViewPager(SectionsPagerAdapter pagerAdapter) {
@@ -127,19 +146,22 @@ public class TaskTimingActivity extends AppCompatActivity {
         });
     }
 
-    public void setupTaskParameters(int round, String interfaceVersion) {
+    public void setupTaskParameters(int round) {
         switch (round) {
             case 0:
                 this.mTaskDescriptionTexts = TRAINING_TASK_TEXTS;
-                this.mNTasks = N_TRAINING_TASKS;
+                this.mTaskImages = TRAINING_TASK_IMAGES;
+                this.mNTasks = this.mTaskDescriptionTexts.size();
                 break;
             case 1:
                 this.mTaskDescriptionTexts = TASK_SET_1_TEXTS;
-                this.mNTasks = N_FIRST_ROUND_TASKS;
+                this.mTaskImages = TASK_SET_1_SCREENSHOTS;
+                this.mNTasks = this.mTaskDescriptionTexts.size();
                 break;
             case 2:
                 this.mTaskDescriptionTexts = TASK_SET_2_TEXTS;
-                this.mNTasks = N_SECOND_ROUND_TASKS;
+                this.mTaskImages = TASK_SET_2_SCREENSHOTS;
+                this.mNTasks = this.mTaskDescriptionTexts.size();
                 break;
             default:
                 throw new IllegalStateException("This app only uses 3 rounds.");
@@ -170,8 +192,8 @@ public class TaskTimingActivity extends AppCompatActivity {
 
     public void setupNewTask(int taskNumber) {
         String taskDescription = this.mTaskDescriptionTexts.get(taskNumber);
-        String screenshotName = taskScreenshots.get(taskNumber);
-        this.mSectionsPagerAdapter.setupNewTask(taskDescription, screenshotName);
+        int screenshotId = this.mTaskImages.get(taskNumber);
+        this.mSectionsPagerAdapter.setupNewTask(taskDescription, screenshotId);
 
         this.mTaskGiveUpButton.setAlpha(DISABLED_ALPHA);
         this.mTaskGiveUpButton.setEnabled(false);
@@ -209,6 +231,14 @@ public class TaskTimingActivity extends AppCompatActivity {
                 File file = new File(directory, String.format(Locale.US, "%s.json", this.mSessionResult.participant));
                 if (!file.exists()) {
                     file.createNewFile();
+                } else {
+                    BufferedReader br = new BufferedReader(new FileReader(file));
+                    StringBuilder builder = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        builder.append(line).append("\n");
+                    }
+                    br.close();
                 }
 
                 BufferedWriter bw = new BufferedWriter(new FileWriter(file));
@@ -219,27 +249,173 @@ public class TaskTimingActivity extends AppCompatActivity {
                 Log.e(TAG, e.getMessage(), e);
             }
         } else {
-            Log.wtf(FILE_IO_TAG, "No external storage is mounted - unable to write data to file");
+            Log.wtf(TAG, "No external storage is mounted - unable to write data to file");
         }
     }
 
     public void proceedToNextTransition() {
-        saveTaskData();
+        String transitionMessage;
+        switch (this.mTaskRound) {
+            case 0:
+                transitionMessage = "Ok, now you are ready to try out some NRDC tasks!";
+
+                break;
+            case 1:
+                transitionMessage = "Take a break and let the facilitator know that you have " +
+                        "finished this set of tasks. You can hit the button to proceed after " +
+                        "they have given you further instructions.";
+                break;
+            case 2:
+                transitionMessage = "That concludes the task portion of our experiment! Ask your " +
+                        "facilitator what to do next.";
+                break;
+            default:
+                throw new IllegalStateException("Attempting to proceed to transition from invalid " +
+                        "round of tasks. (" + this.mTaskRound + ")");
+        }
+
+
+        JSONObject experimentData = new JSONObject();
+        try {
+            experimentData = new JSONObject(this.getIntent().getStringExtra(IntentKeys.EXPERIMENT_DATA_EXTRA));
+            JSONArray times = new JSONArray(this.mSessionResult.taskCompletionTimes);
+            experimentData.put(DataKeys.TIMINGS + this.mTaskRound, times);
+            JSONArray outcomes = new JSONArray(this.mSessionResult.taskPerserveraceResults);
+            experimentData.put(DataKeys.OUTCOMES + this.mTaskRound, outcomes);
+
+            Log.i(TAG, experimentData.toString(4));
+
+        } catch (JSONException e) {
+            Log.e(TAG, e.getMessage(), e);
+        }
+
+
 
         this.mTaskRound++;
 
         Intent intent;
-        if (this.mTaskRound < 3) {
+        if (this.mTaskRound < TOTAL_ROUNDS) {
             intent = new Intent(this, TransitionActivity.class);
-            intent.putExtras(this.mActivatingIntent);
-            intent.putExtra(TransitionActivity.TRANSITION_MESSAGE_EXTRA, "Ok, get ready for the real thing!");
+            intent.putExtras(this.getIntent());
+
+            intent.removeExtra(IntentKeys.EXPERIMENT_DATA_EXTRA);
+            intent.putExtra(IntentKeys.EXPERIMENT_DATA_EXTRA, experimentData.toString());
+            intent.putExtra(TransitionActivity.TRANSITION_MESSAGE_EXTRA, transitionMessage);
             intent.putExtra(IntentKeys.TASK_ROUND_EXTRA, this.mTaskRound);
         } else {
+            saveExperimentToFile(experimentData);
             intent = new Intent(this, ThankYouActivity.class);
         }
 
         this.finish();
         startActivity(intent);
+    }
+
+    public void saveExperimentToFile(JSONObject sessionData) {
+        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), DATA_DIR);
+
+            try {
+//                if (!directory.exists()) {
+//                    directory.mkdirs();
+//                }
+//
+//                JSONArray trials;
+//                File file = new File(directory, DATA_FILE);
+//                if (!file.exists()) {
+//                    file.createNewFile();
+//                    trials = new JSONArray();
+//                } else {
+//                    BufferedReader br = new BufferedReader(new FileReader(file));
+//                    StringBuilder builder = new StringBuilder();
+//                    String line;
+//                    while ((line = br.readLine()) != null) {
+//                        builder.append(line).append("\n");
+//                    }
+//                    br.close();
+//                    trials = new JSONArray(builder.toString());
+//                }
+
+                ensureDataFileExists();
+                JSONArray data = getOldExperimentData(DATA_DIR, DATA_FILE);
+                data.put(sessionData);
+                writeDataToFile(DATA_DIR, DATA_FILE, data);
+
+//                BufferedWriter bw = new BufferedWriter(new FileWriter(file, false));
+//
+//                bw.write(trials.toString(4));
+//                bw.close();
+            } catch (Exception e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
+        } else {
+            Log.wtf(TAG, "No external storage is mounted - unable to write data to file");
+        }
+    }
+
+    public void ensureDataFileExists() {
+        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), DATA_DIR);
+            try {
+                if (!directory.exists()) {
+                    directory.mkdirs();
+                }
+
+                File file = new File(directory, DATA_FILE);
+                if (!file.exists()) {
+                    file.createNewFile();
+                }
+            } catch (IOException e) {
+                Log.i(TAG, e.getMessage(), e);
+            }
+        } else {
+            Log.wtf(TAG, "No external storage is mounted - unable to write data to file");
+        }
+    }
+
+    public JSONArray getOldExperimentData(String dir, String fileName) {
+        JSONArray experimentData = null;
+        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), dir);
+            File file = new File(directory, fileName);
+
+            try {
+                BufferedReader br = new BufferedReader(new FileReader(file));
+                StringBuilder builder = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    builder.append(line).append("\n");
+                }
+                br.close();
+                experimentData = new JSONArray(builder.toString());
+            } catch (IOException|JSONException e) {
+                Log.i(TAG, e.getMessage(), e);
+            }
+        } else {
+            Log.wtf(TAG, "No external storage is mounted - unable to write data to file");
+        }
+
+        if (experimentData == null) {
+            experimentData = new JSONArray();
+        }
+
+        return experimentData;
+    }
+
+    public void writeDataToFile(String dir, String fileName, JSONArray data) {
+        if (Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
+            File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), dir);
+            File file = new File(directory, fileName);
+            try {
+                BufferedWriter bw = new BufferedWriter(new FileWriter(file, false));
+                bw.write(data.toString(4));
+                bw.close();
+            } catch (IOException|JSONException e) {
+                Log.i(TAG, e.getMessage(), e);
+            }
+        } else {
+            Log.wtf(TAG, "No external storage is mounted - unable to write data to file");
+        }
     }
 
 
@@ -286,10 +462,10 @@ public class TaskTimingActivity extends AppCompatActivity {
             return N_TABS;
         }
 
-        public void setupNewTask(String description, String screenshot) {
+        public void setupNewTask(String description, int screenshot) {
 
             this.mTaskDisplayFragment.setDescription(description);
-            this.mTaskExampleFragment.setScreenshotId(R.drawable.wilfred);
+            this.mTaskExampleFragment.setScreenshotId(screenshot);
 
             this.notifyDataSetChanged();
         }
@@ -302,16 +478,72 @@ public class TaskTimingActivity extends AppCompatActivity {
             "Finally, there is a red button that is currently disabled. You can either wait 3 minutes for it to become available, or just remember that it's there if things take too long. Click either button to move on."
     ));
 
+    public static final ArrayList<Integer> TRAINING_TASK_IMAGES = new ArrayList<>(Arrays.asList(
+            R.drawable.green_thumbs_up,
+            R.drawable.green_thumbs_up,
+            R.drawable.lets_do_this
+    ));
+
     public static final ArrayList<String> TASK_SET_1_TEXTS = new ArrayList<>(Arrays.asList(
-            "Please perform task 1",
-            "Please perform task 2",
-            "Please perform task 3"
+            "Find the current conditions for the \"Sheep Range Mojave Desert Shrub\" location. " +
+                    "This should feature temperature and wind readings, along with webcam images from the area.",
+            "Use the Geospatial Data Search service to find and download the snowfall sensor " +
+                    "temperature data (in degrees Fahrenheit) for the Snake Range East Sagebrush " +
+                    "location. Get the data for 1-minute intervals.",
+            "Suggest a data set to the NRDC. For the name field use \"NRDC Test\"; for the email " +
+                    "field use \"nrdc@test.com\", and in the description put \"test\".",
+            "Use the Webcam Image Archive service to obtain a time-lapse video of the Snake Range " +
+                    "East Subalpine location. Collect images from the dates May 1st through 3rd, " +
+                    "use all times of day, collect the images from the southeast facing camera, " +
+                    "and convert the images into a video series. Watch the resulting video.",
+            "Use the Geospatial Data Search service to find and download the permittivity of the " +
+                    "soil for the Sheep Range Montane " +
+                    "location. Get the data for 10- and 60-minute intervals.",
+            "Locate the Image Gallery. View enlarged versions of the Fly Ranch Geyser (a colorful " +
+                    "geyser in mid eruption). Then view an enlarged photo of a colorful sunset " +
+                    "over a snow covered hill.",
+            "Locate a description of what DataONE is."
+    ));
+
+    public static final ArrayList<Integer> TASK_SET_1_SCREENSHOTS = new ArrayList<>(Arrays.asList(
+            R.drawable.current_conditions_sheep_range_mojave_desert_shrub,
+            R.drawable.geospatial_snake_range_east_sagebrush,
+            R.drawable.suggest_dataset,
+            R.drawable.webcam_image_archive_snake_range_east_subalpine,
+            R.drawable.geospatial_sheep_range_montane,
+            R.drawable.image_gallery_fly_ranch_geyser,
+            R.drawable.data_one
     ));
 
     public static final ArrayList<String> TASK_SET_2_TEXTS = new ArrayList<>(Arrays.asList(
-            "Please perform task 1",
-            "Please perform task 2"
+            "Find the current conditions for the \"Snake Range West Pinyon-Juniper\" location. " +
+                    "This should feature temperature and wind readings, along with webcam images from the area.",
+            "Use the Geospatial Data Search service to find and download the solar radiation " +
+                    "data in kW/square meter for the Rockland Summit " +
+                    "location. Get only the averages.",
+            "Report some research results to the NRDC. For the name field use \"NRDC Test\"; for the email " +
+                    "field use \"nrdc@test.com\", and in the description put \"test\".",
+            "Use the Webcam Image Archive service to obtain a time-lapse video of the Sheep Range " +
+                    "Blackbrush location. Collect images from the dates May 1st through 3rd, " +
+                    "use all times of day, collect the images from the southeast facing camera, " +
+                    "and convert the images into a video series. Watch the resulting video.",
+            "Use the Geospatial Data Search service to find and download the tree trunk radius " +
+                    "growth for the Snake Range West Subalpine " +
+                    "location. Get the data for 10- and 60-minute intervals.",
+            "Find the \"About Us\" information that states the NRDC mission statement",
+            "Locate a description of what CUAHSI is."
+
     ));
+
+    public static final ArrayList<Integer> TASK_SET_2_SCREENSHOTS = new ArrayList<>(Arrays.asList(
+            R.drawable.current_conditions_snake_range_pinyon_juniper,
+            R.drawable.geospatial_rockland_summit,
+            R.drawable.submit_research_results ,
+            R.drawable.webcam_image_archive_sheep_range_blackbrush,
+            R.drawable.geospatial_snake_range_west_subalpine,
+            R.drawable.about_us_nrdc,
+            R.drawable.connections_cuahsi
+            ));
 
     public ArrayList<String> taskDescriptions = new ArrayList<>(Arrays.asList(
             "Use the Geospatial Data Search to find the mean tree radial growth in the Snake Range East Sagebrush location.",

@@ -17,6 +17,11 @@ public class TransitionActivity extends AppCompatActivity {
     Button mProceedButton;
 
     @Override
+    public void onBackPressed() {
+        // do nothing - disable the back button
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_transition);

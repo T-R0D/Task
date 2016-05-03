@@ -23,7 +23,8 @@ public class TaskExampleFragment extends Fragment implements IUpdateableFragment
                              Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_task_example, container, false);
         this.mScreenshotView = (ImageView) rootView.findViewById(R.id.imageview_screenshot);
-        this.mScreenshotId = R.drawable.wilfred;
+//        this.mScreenshotId = R.drawable.wilfred;
+        this.mScreenshotView.setImageResource(this.mScreenshotId);
 
         return rootView;
     }
